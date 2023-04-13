@@ -1,0 +1,10 @@
+stubs/
+*.exe
+*.obj
+*.txt
+*.TXT
+**/COPYING
+*.err
+**/DOSXNT.386
+
+TD/
