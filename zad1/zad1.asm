@@ -16,7 +16,7 @@ _data segment
 				offset w_5, offset w_6, offset w_7, offset w_8, offset w_9
 	
 	
-	input db "zero $" ;to oznacza, że przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
+	input db "osiem			 $" ;to oznacza, że przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
 	parsed db "zero$"
 	
 	digit1 db 0
@@ -25,6 +25,8 @@ _data segment
 	
 	testNegative	db	"nie", 10, 13, "$"
 	testPositive	db	"tak", 10, 13, "$"
+	
+	
 	
 	notFound	db "Nie znaleziono dopasowania!", 10, 13, "$"
 _data ends
@@ -75,93 +77,95 @@ _break:
 
 
 ; PRINTOWANIE TESTOWEGO SŁOWA, NIEISTOTNY KOD
-	;mov ax, seg testBuff
 	mov ax, seg digitCopy
 	mov ds, ax
-	;mov dx, offset testBuff
 	mov dx, offset digitCopy
 	mov ah, 9
-	int 21h
+	;int 21h
 	
 
 	call _initDS
-	
 
 _searchDigit:
-
-	nop
-	nop
 	mov cx, 10
 	nop 
-	nop 
-
-
 	
-	;w dx przechowywać będziemy miejsce przechowywanego offsetu liczby z którą porównujemy
+	
+	
+	;w dx przechowywać będziemy offset do offsetu liczby z którą porównujemy
 	;przy każdej iteracji pętli _compareWithDigit będzie on przesuwany o 2 bajty w lewo (bo offsety zajmują 2 bajty)
-	mov dx, offset digits 				
+	mov bx, offset digits 					
+_compareWithDigit:	
+	; si -> input
+	; di -> pojedyncza cyfra z tablicy
 	
+	mov si, offset input 					;cofamy się na początek inputu za każdym razem gdy zmieniamy słowo z którym porównujemy
+	mov di, word ptr ds:[bx]
 		
-	_compareWithDigit:	
-		; si -> input
-		; di -> pojedyncza cyfra z tablicy
+	compareStrings:
+		call _initDS
+		mov dl, byte ptr ds:[si]
+		;
+		; TYMCZASOWO PORÓWNUJĘ LICZBY ZE ZMOCKOWANYM INPUTEM KTÓRY ZNAJDUJE SIĘ W DS
+		; NAJPEWNIEJ INPUT W PRZYSZŁOŚCI BĘDZIE W CS I WTEDY TRZEBA BĘDZIE POPRAWIĆ
+		;
+		mov al, byte ptr ds:[di]		
 		
-		mov si, offset input 					;cofamy się na początek inputu
-		mov di, dx								;do di przekazujemy początek stringa danej liczby
+		cmp al, '$'							;jeśli dotarliśmy do końca inputu to słowa są identyczne
+		je _true
+		
+		;przekopiowana nazwa cyfry i tak ma na końcu znak dolara (nie ma tam spacji), więc możemy spokojnie porównywać hardcodowane słowa i input
+		cmp al, dl							;porównujemy dwa obecnie przetwarzane znaki, jeśli nie są równe to przerwiemy porównywanie
+		jne _false
 		
 		
-		compareStrings:
-			xor ax, ax
-			xor bx, bx
-			mov bl, byte ptr ds:[si]
-			mov al, byte ptr cs:[di]			;w cs:[di] znajduje się przekopiowany input
+		inc si								;przesuwamy adresy żeby móc przejść do następnych liter
+		inc di
+		
+		jmp compareStrings
+		
+		
+		
+		_false:
+			;jeśli znaki nie są równe, to nie ma sensu dalej porównywać - wykonujemy "continue" na pętli _compareWithDigit				
+;			mov ax, seg digitCopy
+;			mov ds, ax
+;			mov dx, offset digitCopy
+;			mov ah, 9
+;			int 21h
+;			
+;			call _printNewLine
+;			
+;			mov	ax, seg _data
+;			mov ds, ax
+;			
+;			push bx
+;			mov ax, word ptr ds:[bx] 
+;			pop bx
+;			
+;			mov dx, ax
+;			mov ah, 9
+;			int 21h
+;			
+;			call _printNewLine
 			
+			jmp _continue
 
-			;przekopiowana nazwa cyfry i tak ma na końcu znak dolara, więc możemy spokojnie porównywać hardcodowane słowa i input
-			cmp al, bl							;porównujemy dwa obecnie przetwarzane znaki, jeśli nie są równe to przerwiemy porównywanie
-			jne _false
-			
-			cmp al, '$'							;jeśli dotarliśmy do końca inputu to słowa są identyczne
-			je _true
-			
-			inc si								;przesuwamy adresy żeby móc przejść do następnych liter
-			inc di
-			
-			jmp compareStrings
+		_true:
+			mov	ax, seg testPositive
+			mov ds, ax
+			mov dx, offset testPositive
+			mov ah, 9
+			int 21h
+			jmp _end
 		
 		
-			_false:
-				;jeśli znaki nie są równe, to nie ma sensu dalej porównywać - wykonujemy "continue" na pętli _compareWithDigit				
-				mov	ax, seg testNegative
-				mov ds, ax
-				mov dx, offset testNegative
-				mov ah, 9
-				int 21h
-				
-				mov	ax, seg digitCopy
-				mov ds, ax
-				mov dx, di
-				mov ah, 9
-				int 21h
-				
-				call _initDS
-				
-				jmp _continue
-
-			_true:
-				mov	ax, seg testPositive
-				mov ds, ax
-				mov dx, offset testPositive
-				mov ah, 9
-				int 21h
-				jmp _end
-				
-
 _continue:
-			inc dx
-			inc dx
+	inc bx
+	inc bx
 		
 	loop _compareWithDigit
+	
 		
 _notFound:
 		mov	ax, seg notFound
@@ -188,14 +192,23 @@ _initDS:
 	mov ax, seg _data
 	mov ds, ax
 	ret
-
+	
+_printNewLine:
+	mov	ax, seg newline
+	mov ds, ax
+	mov ax, offset newline
+	mov dx, ax
+	mov ah, 9
+	int 21h
+	
+	ret
 ;=================================
 ;=================================
 ;            ZMIENNE
 ;=================================
 ;=================================
 
-	testBuff	db "lorem ipsum","$"
+	testBuff	db "lorem ipsum", 10, 13, "$"
 	digitCopy	db	16 dup("$")
 	offsets	dw	offset w_0, offset w_1, offset w_2, offset w_3, offset w_4,
 				offset w_5, offset w_6, offset w_7, offset w_8, offset w_9
