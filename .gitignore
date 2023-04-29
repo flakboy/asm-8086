@@ -1,4 +1,5 @@
 stubs/
+*.zip
 *.exe
 *.obj
 *.txt
