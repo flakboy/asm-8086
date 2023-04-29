@@ -12,12 +12,12 @@
 
 
 _data segment
+	initMsg db "Wprowadz slowny opis dzialania", 10, 13, "$"
+
 	emptyStr db "$"
 	newline db 10, 13, "$"
 	space db 32, "$"
 	
-	
-	w_minus db "minus", "$"
 
 	w_0	db	"zero", "$"
 	w_1	db	"jeden", "$"
@@ -64,8 +64,20 @@ _data segment
 				offset w_20, offset w_30, offset w_40, offset w_50,
 				offset w_60, offset w_70, offset w_80, offset w_90
 	
-	input db "		  		dziewiec	  	   plus dziewiec$" ;to oznacza, że przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
-	parsed db "zero$"
+	
+	w_minus db "minus", "$"
+	
+	w_add	db	"plus", "$"
+	w_sub	db	"minus", "$"
+	w_mul	db	"razy", "$"
+	
+	operators	dw	offset w_add, offset w_sub, w_mul
+	
+	
+	input db 128, ?, 128 dup("$") 
+	;input db "		  		jeden	  	   plus dziewiec$" ;przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
+	
+	
 	
 	operandLeft 	dw	0
 	operandRight 	dw	0
@@ -85,13 +97,27 @@ _start:
 	mov ss, ax
 	mov sp, offset _stackTop
 	
-	;inicjalizacja segmentu danych
-	call initDS	
 	
+	
+	mov ax, seg _data
+	mov ds, ax
+	mov ax, offset initMsg
+	mov dx, ax
+	mov ah, 9
+	int 21h
 
+	;mov ax, seg _data
+	;mov ds, ax
+	mov dx, offset input
+	mov ah, 0ah
+	int 21h
 
-	;pierwszy token
-	mov bx, offset input
+	call printNewLine
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		pierwszy token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	mov bx, offset input + 2
 	call findTokenStart
 	
 	
@@ -102,7 +128,11 @@ _start:
 	
 	;wrzucam si (które w tej chwili przechowuje koniec przeparsowanego tokena), aby móc go potem wykorzystać do parsowania kolejnego tokena
 	push si
-	call searchDigit
+	
+	
+	mov cx, 10
+	mov bx, offset units
+	call searchWord
 	
 	mov bx, offset operandLeft
 	
@@ -112,7 +142,10 @@ _start:
 	call initDS
 	
 	
-	;drugi token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		drugi token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
 	call clearCopyBuffer
 	
 	
@@ -130,19 +163,33 @@ _start:
 	push si
 	
 	
-	;
-	;	MIEJSCE NA KOD PARSUJĄCY DRUGI TOKEN
-	;
+	mov cx, 3
+	mov bx, offset operators
+	call searchWord
 	
-	;mov ax, seg digitCopy
-	;mov ds, ax		
-	;mov dx, offset digitCopy
-	;mov ah, 9
-	;int 21h
+	
+	nop
+	nop
+	nop
+	nop
+	nop
+	mov bx, offset operator
+	;zapisanie otrzymane liczby w pamięci
+	mov word ptr ds:[bx], ax
+	nop
+	nop
+	nop
+	nop
+	nop
+	
 
 	call initDS
-
-	;trzeci token
+	
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		trzeci token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
 	call clearCopyBuffer
 	
 	
@@ -157,29 +204,47 @@ _start:
 	mov di, offset digitCopy
 	call copyToken					
 	
-	;
-	;	MIEJSCE NA KOD PARSUJĄCY TRZECI TOKEN
-	;
-	
-	call searchDigit
+	mov cx, 10
+	mov bx, offset units
+	call searchWord
 	
 	
 	mov bx, offset operandRight
 	;zapisanie otrzymanej liczby w pamięci
 	mov word ptr ds:[bx], ax
 
+	mov bx, offset operator
+	mov dx, word ptr ds:[bx]
+	
+	;gdyby operacji było więcej, to lepiej byłoby zrobić tablicę 
+	;offsetów do poszczególnych etykiet i zrobić jumpa do jednego
+	;z nich
+	cmp dx, 1
+	je _subNumbers
+	jl _addNumbers
+	jg _mulNumbers
+	
+	
+	
+;obliczanie wyniku 	
+_addNumbers:
+	mov bx, offset operandLeft
+	mov ax, word ptr ds:[bx]
+ 
+	mov bx, offset operandRight
+	add ax, word ptr ds:[bx]
+	
+	jmp _copyAbs
 
+_subNumbers:
 
-	;obliczanie wyniku 
-	nop
-	nop
 
 	mov bx, offset operandLeft
 	mov ax, word ptr ds:[bx]
  
 	mov bx, offset operandRight
-	;sub ax, word ptr ds:[bx]
-	add ax, word ptr ds:[bx]
+	sub ax, word ptr ds:[bx]
+	;add ax, word ptr ds:[bx]
 
 	jns _copyAbs
 	
@@ -202,7 +267,17 @@ _start:
 	
 	pop ax
 	
+	jmp _copyAbs
+
+_mulNumbers:
+	mov bx, offset operandLeft
+	mov ax, word ptr ds:[bx]
+ 
+	mov bx, offset operandRight
+	;add ax, word ptr ds:[bx]
+	mul	word ptr ds:[bx]
 	
+	jmp _copyAbs
 	
 	
 	
@@ -302,6 +377,7 @@ _printTeens:
 	
 	
 	
+	
 _end:
 	mov al, 0
 	mov ah, 4ch
@@ -311,7 +387,9 @@ _end:
 
 ;==================================================================
 ;==================================================================
+;==================================================================
 ;							Procedury
+;==================================================================
 ;==================================================================
 ;==================================================================
 
@@ -362,6 +440,10 @@ copyToken:
 	mov al, byte ptr ds:[si]
 	
 	cmp al, 32								;32 - kod ASCII dla spacji
+	je _break
+
+	mov al, byte ptr ds:[si]
+	cmp al, 13								;9 - kod ASCII dla spacji
 	je _break
 
 	mov al, byte ptr ds:[si]
@@ -418,29 +500,39 @@ printMinus:
 	ret
 
 
+; ==========================================================================
+; =============================== searchWord ===============================
+; ==========================================================================
 
-;=================== procedura porównująca token ze zdefiniowanymi cyframi szukając dopasowania
-; modyfikuje bx
-; jako wynik operacji "zwraca" index znalezionego elementu
-searchDigit:
-	mov cx, 10
+; procedura porównująca token ze zdefiniowanymi cyframi szukając dopasowania
+; modyfikowane rekordy: ax, bx, cx, dx, si, di
+
+;"parametry":
+; bx - offset przeszukiwanej tablicy
+; cx - długość przeszukiwanej tablicy
+
+
+;"zwracane" wartości:
+; ax - index znalezionego elementu
+
+searchWord:
+	;w bx przechowywać będziemy offset do pierwszego elementu tablicy
+	;przy każdej iteracji pętli _compareWithWord będzie on przesuwany o 2 bajty w lewo (bo offsety zajmują 2 bajty)
+	mov dx, cx
 	
-	;w bx przechowywać będziemy offset do offsetu liczby z którą porównujemy
-	;przy każdej iteracji pętli _compareWithDigit będzie on przesuwany o 2 bajty w lewo (bo offsety zajmują 2 bajty)
-	mov bx, offset units 					
-_compareWithDigit:	
+_compareWithWord:	
 	; si -> input
 	; di -> pojedyncza cyfra z tablicy
 	
 	mov si, offset digitCopy 					;cofamy się na początek inputu za każdym razem gdy zmieniamy słowo z którym porównujemy
 	mov di, word ptr ds:[bx]
-		
+	
+	
 	compareChars:
-		call initDS
-		mov dl, byte ptr cs:[si]
+		mov ah, byte ptr cs:[si]
 		mov al, byte ptr ds:[di]		
 		
-		cmp al, dl							;porównujemy dwa obecnie przetwarzane znaki, jeśli nie są równe to przerwiemy porównywanie
+		cmp al, ah							;porównujemy dwa obecnie przetwarzane znaki, jeśli nie są równe to przerwiemy porównywanie
 		jne _false
 		
 		
@@ -459,13 +551,7 @@ _compareWithDigit:
 
 
 		_true:
-			;mov	ax, seg testPositive
-			;mov ds, ax
-			;mov dx, offset testPositive
-			;mov ah, 9
-			;int 21h
-			
-			mov ax, 10
+			mov ax, dx
 			sub ax, cx
 			
 			ret
@@ -475,12 +561,14 @@ _continue:
 	inc bx
 	inc bx
 		
-	loop _compareWithDigit
+	loop _compareWithWord
 	
+	jmp _invalidInput
 	ret
 
 		
 _invalidInput:
+
 		mov	ax, seg invalidInput
 		mov ds, ax
 		mov dx, offset invalidInput
@@ -493,6 +581,7 @@ _invalidInput:
 ;=================================
 ;            ZMIENNE
 ;=================================
+
 	digitCopy	db	16 dup("$")
 _code ends
 

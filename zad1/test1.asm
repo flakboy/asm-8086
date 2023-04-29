@@ -1,10 +1,23 @@
+;=======================================================================================
+;=======================================================================================
+;
+;TODO:
+;przyjmowanie inputu od użytkownika
+;FIX - przy niepoprawnym inpucie nie jest zwracany błąd
+;parsowanie operatora
+;w zależności od operatora wykonanie odpowiedniej informacji
+;=======================================================================================
+;=======================================================================================
+
+
+
 _data segment
+	initMsg db "Wprowadz slowny opis dzialania", 10, 13, "$"
+
 	emptyStr db "$"
-	
 	newline db 10, 13, "$"
 	space db 32, "$"
-
-	w_minus db "minus", "$"
+	
 
 	w_0	db	"zero", "$"
 	w_1	db	"jeden", "$"
@@ -50,30 +63,31 @@ _data segment
 	tens	dw	offset emptyStr, offset emptyStr,
 				offset w_20, offset w_30, offset w_40, offset w_50,
 				offset w_60, offset w_70, offset w_80, offset w_90
-
 	
-	input db "		  		osiem	  	   minus dwa$" ;to oznacza, że przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
-	parsed db "zero$"
+	
+	w_minus db "minus", "$"
+	
+	w_add	db	"plus", "$"
+	w_sub	db	"minus", "$"
+	w_mul	db	"razy", "$"
+	
+	operators	dw	offset w_add, offset w_sub, w_mul
+	
+	
+	input db 128, ?, 128 dup("$") 
+	;input db "		  		jeden	  	   plus dziewiec$" ;przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
 	
 	
 	
 	operandLeft 	dw	0
-	operandRight 	dw	99
+	operandRight 	dw	0
 	operator 		dw	0
 	result			dw	0
 	
-	
-	;przechowuje adres początku stringa z którego będziemy wyciągać tokeny
-	nextTokenStart 		dw 	?
-	
-	
 	tens_digit dw ?
 	units_digit dw ?
-	
-	
-	notFound	db "Wprowadzone rownanie jest bledne!", 10, 13, "$"
-	
-	
+
+	invalidInput	db "Wprowadzone rownanie jest bledne!", 10, 13, "$"
 _data ends
 
 _code segment
@@ -83,19 +97,155 @@ _start:
 	mov ss, ax
 	mov sp, offset _stackTop
 	
-	;inicjalizacja segmentu danych
-	call initDS	
 	
 	
+	mov ax, seg _data
+	mov ds, ax
+	mov ax, offset initMsg
+	mov dx, ax
+	mov ah, 9
+	int 21h
+
+	;mov ax, seg _data
+	;mov ds, ax
+	mov dx, offset input
+	mov ah, 0ah
+	int 21h
+
+	call printNewLine
+
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		pierwszy token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	mov bx, offset input + 2
+	call findTokenStart
 	
 	
+	mov si, bx						;wynik findTokenStart znajduje się w bx
+	mov di, offset digitCopy
+	call copyToken					;copyToken nie nadpisuje bx
+	
+	
+	;wrzucam si (które w tej chwili przechowuje koniec przeparsowanego tokena), aby móc go potem wykorzystać do parsowania kolejnego tokena
+	push si
+	
+	
+	mov cx, 10
+	mov bx, offset units
+	call searchWord
 	
 	mov bx, offset operandLeft
-	mov ax, word ptr ds:[bx]
+	
+	;zapisanie otrzymanej liczby w pamięci
+	mov word ptr ds:[bx], ax
+
+	call initDS
+	
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		drugi token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+	call clearCopyBuffer
+	
+	
+	;pobieramy ze stosu adres który uprzednio wrzuciliśmy na stos, ponieważ potrzebujemy go do przeparsowania drugiego tokena
+	pop si
+	mov bx, si
+	call findTokenStart
+
+
+	
+	mov si, bx						
+	mov di, offset digitCopy
+	call copyToken					
+	
+	push si
+	
+	
+	mov cx, 3
+	mov bx, offset operators
+	call searchWord
+	
+	
+	nop
+	nop
+	nop
+	nop
+	nop
+	mov bx, offset operator
+	;zapisanie otrzymane liczby w pamięci
+	mov word ptr ds:[bx], ax
+	nop
+	nop
+	nop
+	nop
+	nop
+	
+
+	call initDS
+	
+	
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;		trzeci token
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
+	call clearCopyBuffer
+	
+	
+	;pobieramy ze stosu adres który uprzednio wrzuciliśmy na stos, ponieważ potrzebujemy go do przeparsowania trzeciego tokena
+	pop si
+	mov bx, si
+	call findTokenStart
+
+
+	
+	mov si, bx						
+	mov di, offset digitCopy
+	call copyToken					
+	
+	mov cx, 10
+	mov bx, offset units
+	call searchWord
+	
 	
 	mov bx, offset operandRight
-	sub ax, word ptr ds:[bx]		;wynik działania znajduje się w ax
+	;zapisanie otrzymanej liczby w pamięci
+	mov word ptr ds:[bx], ax
+
+	mov bx, offset operator
+	mov dx, word ptr ds:[bx]
 	
+	;gdyby operacji było więcej, to lepiej byłoby zrobić tablicę 
+	;offsetów do poszczególnych etykiet i zrobić jumpa do jednego
+	;z nich
+	cmp dx, 1
+	je _subNumbers
+	jl _addNumbers
+	jg _mulNumbers
+	
+	
+	
+;obliczanie wyniku 	
+_addNumbers:
+	mov bx, offset operandLeft
+	mov ax, word ptr ds:[bx]
+ 
+	mov bx, offset operandRight
+	add ax, word ptr ds:[bx]
+	
+	jmp _copyAbs
+
+_subNumbers:
+
+
+	mov bx, offset operandLeft
+	mov ax, word ptr ds:[bx]
+ 
+	mov bx, offset operandRight
+	sub ax, word ptr ds:[bx]
+	;add ax, word ptr ds:[bx]
+
 	jns _copyAbs
 	
 	
@@ -117,7 +267,17 @@ _start:
 	
 	pop ax
 	
+	jmp _copyAbs
+
+_mulNumbers:
+	mov bx, offset operandLeft
+	mov ax, word ptr ds:[bx]
+ 
+	mov bx, offset operandRight
+	;add ax, word ptr ds:[bx]
+	mul	word ptr ds:[bx]
 	
+	jmp _copyAbs
 	
 	
 	
@@ -213,23 +373,100 @@ _printTeens:
 
 	jmp _end
 	
+	
+	
+	
+	
+	
 _end:
 	mov al, 0
 	mov ah, 4ch
 	int 21h
 
-;=================================
-;=================================
-;           Procedury
-;=================================
-;=================================
+
+
+;==================================================================
+;==================================================================
+;==================================================================
+;							Procedury
+;==================================================================
+;==================================================================
+;==================================================================
+
+
+
 initDS:
 	mov ax, seg _data
 	mov ds, ax
 	ret
 	
 
+
+;nadpisuje rejestry cx oraz bx
+clearCopyBuffer:
+	mov cx, 16
+	mov di, offset digitCopy
 	
+_clearChar:
+	mov byte ptr cs:[di], "$"
+	inc di
+	loop _clearChar
+	
+	ret
+
+
+
+;wymaga ustawienia bx na początek parsowanego stringa
+;znaleziony offset tokenu znajdzie się w bx
+findTokenStart:
+	cmp byte ptr ds:[bx], 32		;32 -> kod ASCII spacji
+	je _findTokenInc
+	
+	cmp byte ptr ds:[bx], 9			;9 -> kod ASCII tabulatora
+	je _findTokenInc	
+	
+	ret
+	
+	
+_findTokenInc:
+	inc bx
+	jmp findTokenStart
+	
+	
+
+;wymaga ustawienia si i di
+;istotne jest to, że di ma kierować do cs
+copyToken:
+	mov al, byte ptr ds:[si]
+	
+	cmp al, 32								;32 - kod ASCII dla spacji
+	je _break
+
+	mov al, byte ptr ds:[si]
+	cmp al, 13								;9 - kod ASCII dla spacji
+	je _break
+
+	mov al, byte ptr ds:[si]
+	cmp al, 9								;9 - kod ASCII dla spacji
+	je _break
+	
+	cmp al, "$"
+	je _break
+	
+	cmp al, 0
+	je _break
+	
+	mov byte ptr cs:[di], al
+	
+	inc si
+	inc di
+	jmp copyToken
+_break:
+	ret
+
+
+
+
 printNewLine:
 	mov	ax, seg newline
 	mov ds, ax
@@ -240,6 +477,8 @@ printNewLine:
 	
 	ret
 
+
+
 printSpace:
 	mov ax, seg _data
 	mov ds, ax
@@ -248,6 +487,8 @@ printSpace:
 	mov ah, 9
 	int 21h
 	ret
+
+
 
 printMinus:
 	mov ax, seg _data
@@ -258,12 +499,100 @@ printMinus:
 	int 21h
 	ret
 
+
+; ==========================================================================
+; =============================== searchWord ===============================
+; ==========================================================================
+
+; procedura porównująca token ze zdefiniowanymi cyframi szukając dopasowania
+; modyfikowane rekordy: ax, bx, cx, dx, si, di
+
+;"parametry":
+; bx - offset przeszukiwanej tablicy
+; cx - długość przeszukiwanej tablicy
+
+
+;"zwracane" wartości:
+; ax - index znalezionego elementu
+
+searchWord:
+	;w bx przechowywać będziemy offset do pierwszego elementu tablicy
+	;przy każdej iteracji pętli _compareWithWord będzie on przesuwany o 2 bajty w lewo (bo offsety zajmują 2 bajty)
+	mov dx, cx
+	
+_compareWithWord:	
+	; si -> input
+	; di -> pojedyncza cyfra z tablicy
+	
+	mov si, offset digitCopy 					;cofamy się na początek inputu za każdym razem gdy zmieniamy słowo z którym porównujemy
+	mov di, word ptr ds:[bx]
+	
+	
+	compareChars:
+		mov ah, byte ptr cs:[si]
+		mov al, byte ptr ds:[di]		
+		
+		cmp al, ah							;porównujemy dwa obecnie przetwarzane znaki, jeśli nie są równe to przerwiemy porównywanie
+		jne _false
+		
+		
+		;przekopiowana nazwa cyfry i tak ma na końcu znak dolara (nie ma tam spacji), więc możemy w ten sposób porównywać hardcodowane słowa i input
+		cmp al, '$'							;jeśli dotarliśmy do końca inputu to słowa są identyczne
+		je _true
+		
+		inc si								;przesuwamy adresy żeby móc przejść do następnych liter
+		inc di
+		
+		jmp compareChars
+		
+		
+		_false: ;jeśli znaki nie są równe wykonujemy "continue"		
+			jmp _continue
+
+
+		_true:
+			mov ax, dx
+			sub ax, cx
+			
+			ret
+		
+		
+_continue:
+	inc bx
+	inc bx
+		
+	loop _compareWithWord
+	
+	jmp _invalidInput
+	ret
+
+		
+_invalidInput:
+
+		mov	ax, seg invalidInput
+		mov ds, ax
+		mov dx, offset invalidInput
+		mov ah, 9
+		int 21h
+		
+		jmp _end
+
+
+;=================================
+;            ZMIENNE
+;=================================
+
+	digitCopy	db	16 dup("$")
 _code ends
 
 
 
 _stack segment stack
 	dw	100	dup(?)
+	
+	;dla 8086, stos "rośnie" w kierunku adresów malejących,
+	;więc jego pierwotny wierzchołek musi być na dole
+	;używamy dw a nie db, ponieważ 8086 jest 16-bitowym procesorem
 	_stackTop	dw	? 
 _stack ends
 
