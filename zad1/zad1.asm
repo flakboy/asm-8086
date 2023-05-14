@@ -1,16 +1,3 @@
-;=======================================================================================
-;=======================================================================================
-;
-;TODO:
-;przyjmowanie inputu od użytkownika
-;FIX - przy niepoprawnym inpucie nie jest zwracany błąd
-;parsowanie operatora
-;w zależności od operatora wykonanie odpowiedniej informacji
-;=======================================================================================
-;=======================================================================================
-
-
-
 _data segment
 	initMsg db "Wprowadz slowny opis dzialania", 10, 13, "$"
 
@@ -75,8 +62,6 @@ _data segment
 	
 	
 	input db 128, ?, 128 dup("$") 
-	;input db "		  		jeden	  	   plus dziewiec$" ;przy parsowaniu inputu będę musiał ręcznie nadpisać CR dolarem
-	
 	
 	
 	operandLeft 	dw	0
@@ -106,10 +91,9 @@ _start:
 	mov ah, 9
 	int 21h
 
-	;mov ax, seg _data
-	;mov ds, ax
+	
 	mov dx, offset input
-	mov ah, 0ah
+	mov ah, 0ah				;przerwanie dla inputu
 	int 21h
 
 	call printNewLine
@@ -168,19 +152,11 @@ _start:
 	call searchWord
 	
 	
-	nop
-	nop
-	nop
-	nop
-	nop
+	
 	mov bx, offset operator
 	;zapisanie otrzymane liczby w pamięci
 	mov word ptr ds:[bx], ax
-	nop
-	nop
-	nop
-	nop
-	nop
+	
 	
 
 	call initDS
@@ -236,9 +212,8 @@ _addNumbers:
 	
 	jmp _copyAbs
 
+
 _subNumbers:
-
-
 	mov bx, offset operandLeft
 	mov ax, word ptr ds:[bx]
  
@@ -250,7 +225,8 @@ _subNumbers:
 	
 	
 	;NEG służy do przemieniania liczby na przeciwną, ponieważ liczby ujemne zapisywane w U2 nie wyglądają podobnie do ich dodatnich odpowiedników
-	;jest to ekwiwalent instrukcji
+	
+	;NEG to ekwiwalent instrukcji
 	;NOT ax
 	;INC ax
 	
@@ -286,7 +262,7 @@ _copyAbs:
 	mov word ptr ds:[bx], ax
 	
 	
-	xor dx, dx					;jeśli nie wyczyszczę dx to dzieją się dziwne rzeczy dla i dzielenia
+	xor dx, dx					;jeśli nie wyczyszczę dx to dzieją się dziwne rzeczy dla dzielenia
 	
 	mov cx, 10
 	;po podzieleniu, do DX trafi reszta z dzielenia, a do AX wynik dzielenia całkowitego
@@ -443,11 +419,11 @@ copyToken:
 	je _break
 
 	mov al, byte ptr ds:[si]
-	cmp al, 13								;9 - kod ASCII dla spacji
+	cmp al, 13								;13 - kod ASCII dla CR
 	je _break
 
 	mov al, byte ptr ds:[si]
-	cmp al, 9								;9 - kod ASCII dla spacji
+	cmp al, 9								;9 - kod ASCII dla horizontal tab
 	je _break
 	
 	cmp al, "$"
@@ -569,13 +545,13 @@ _continue:
 		
 _invalidInput:
 
-		mov	ax, seg invalidInput
-		mov ds, ax
-		mov dx, offset invalidInput
-		mov ah, 9
-		int 21h
-		
-		jmp _end
+	mov	ax, seg invalidInput
+	mov ds, ax
+	mov dx, offset invalidInput
+	mov ah, 9
+	int 21h
+	
+	jmp _end
 
 
 ;=================================
