@@ -4,8 +4,9 @@ _data segment
 	video_offset	EQU	0a000h
 	
 	;współrzędne środka elipsy
-	xc	EQU 160
-	yc	EQU 100
+	xc	dw 160
+	;yc	dw 100
+	yc	dw 99
 	
 	
 	;program w oparciu o algorytm przedstawiony na stronie:
@@ -18,18 +19,14 @@ _data segment
 	
 	;wartości (rx)^2 oraz (ry)^2 
 	;często przewijają się we wzorach, stąd lepiej je zapamiętać
-	rx_2	dd	?
-	ry_2	dd	?
+	rx_2	dw	?
+	ry_2	dw	?
 	
 	
 	;zmienna decyzyjna, której rozmiar może być dla danego rozmiaru ekranu 
 	;większy niż 16 bitów, stąd definiujemy go jako słowo podwójne
-	cond1	dd	?
-	is_cond1_neg	db	0
-	
-	cond2	dd	?
-	is_cond2_neg	db	0
-	
+	cond1	dd	0
+	cond2	dd	0
 	
 	
 	curr_x	dw	0
@@ -49,14 +46,16 @@ _data segment
 	
 	lesser_than	db "mniejsze$"
 	greater_than db "wieksze$"
-	
 	equals db "rowne$"
 	
-	oct_1_end db "koniec octantu 1", 10, 13, "$"
-	
-	big_number dd	0ffffffh
-	
 	tmp dw ?
+	tmp_dd dd 0
+	
+	_A db "A$"
+	_B db "B$"
+	
+	
+	pixel_offset dw 0
 _data ends
 
 _code segment
@@ -75,27 +74,15 @@ _start:
 	
 	call initDS
 
-	;wejście w tryb VGA 320x200
-	;mov al, 13h
-	;mov ah, 0
-	;int 10h
+
+	;;wejście w tryb VGA 320x200
+	mov al, 13h
+	mov ah, 0
+	int 10h
 
 	;ustawimy pamięć wideo jako ES
 	mov ax, video_offset
 	mov es, ax
-	
-	
-	;;praca na dwóch dodawanych dwordach 
-	;finit
-	;fild	dword ptr ds:[result]
-	;fild	dword ptr ds:[result]
-	;fadd
-	;fist	dword ptr ds:[result]
-	;;mniej znaczące bity wyniku
-	;mov	ax, word ptr ds:[result]
-	;;bardziej znaczące bity wyniku
-	;mov	ax, word ptr ds:[result + 2]
-	
 	
 	;obliczenie wartości rx_2 oraz ry_2, przydadzą się później
 	;dopuszczamy wartości rx i ry <= 100,
@@ -105,19 +92,16 @@ _start:
 	mov	ax, word ptr ds:[rx]
 	mul	word ptr ds:[rx]
 	mov	word ptr ds:[rx_2],	ax
-
 	;ry_2
 	mov	ax, word ptr ds:[ry]
 	mul	word ptr ds:[ry]
 	mov	word ptr ds:[ry_2],	ax
 	
 	
-	
-	
-	;curr_x jest na początku ustawione na 0, natomiast curr_y musimy ustawić dopiero po przeparsowaniu rx
+	;curr_x jest na początku ustawione na 0, w segmencie danych
+	;natomiast curr_y musimy ustawić dopiero po przeparsowaniu rx
 	mov ax, word ptr ds:[rx]
 	mov word ptr ds:[curr_y], ax
-	
 	
 	
 	;==========================================================================
@@ -127,8 +111,8 @@ _start:
 	;==========================================================================
 	
 	;--------------------------------------------------------------------------
-	;obliczanie wartości decyzyjnej cond_1 której użyjemy do wybierania pikseli	
-	;na podstawie wzoru cond_1 = rx_2 - (ry_2 * rx) + (0.25 * ry_2);
+	;obliczanie wartości decyzyjnej cond1 której użyjemy do wybierania pikseli	
+	;na podstawie wzoru cond1 = rx_2 - (ry_2 * rx) + (0.25 * ry_2);
 	;--------------------------------------------------------------------------	
 	finit
 	fild word ptr ds:[ry_2]
@@ -149,8 +133,12 @@ _start:
 	
 	fist dword ptr ds:[cond1]
 
-	mov ax, word ptr ds:[cond1]
-	mov ax, word ptr ds:[cond1 + 2]
+
+	;ten kod służy wyłącznie do debugowania
+	;mov ax, word ptr ds:[cond1]
+	;mov ax, word ptr ds:[cond1 + 2]
+	
+	;wynik jest niby poprawny, ale może być ujemny i z tego mogą wynikać potem problemy!
 	
 	
 	;--------------------------------------------------------------------------
@@ -174,24 +162,277 @@ _start:
 	fmul
 	fist	dword ptr ds:[d_y]
 
-		
+
+	;debugowanie
+	;mov ax, word ptr ds:[d_y]
+	;mov ax, word ptr ds:[d_y + 2]
+
+	
+	
+	
+	
+	;--------------------------------------------------------------------------	
+	; 				Pętla rysująca pierwszy oktant, tak długo aż dx < dy
+	;--------------------------------------------------------------------------	
 _octant1:
+
+
+	;ekwiwalent operacji sleep na określoną ilość mikrosekund
+	mov cx, 0000h
+	mov dx, 0186ah
+	xor ax, ax
+	mov ah, 86h
+	int 15h				;przerwanie BIOS-u, wymusza czekanie określonej ilości mikrosekund, podanej w CX:DX
+
+	;finit	
+	;fild	word ptr ds:[yc]
+	;fild	word ptr ds:[curr_y]
+	;fadd
+	
+	;mov		word ptr ds:[tmp], 320
+	;fild	word ptr ds:[tmp]
+	;fmul
+	
+	;fist	word ptr ds:[tmp]
+		
+	;mov		ax, word ptr ds:[tmp]
+	;mov		bx, video_offset
+	
+	;add		bx, word ptr ds:[xc]
+	;add		bx,	word ptr ds:[curr_x]
 	
 	
-	;--------------------------------------------------------------------------	
-	;--------------------------------------------------------------------------	
-	;								PORÓWNYWANIE
-	;--------------------------------------------------------------------------	
-	;--------------------------------------------------------------------------	
+	;xc + x, yc + y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	add ax,	word ptr ds:[curr_y]
+	mul cx
+
+	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
+
+	mov	bx, 0h
+	add bx, ax
 	
-	;o porównywaniu za pomocą FPU: https://www.felixcloutier.com/x86/fcom:fcomp:fcompp
+	mov ax, word ptr ds:[xc]
+	add ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	
+
+	call colorPixel
+
+
+
+	;xc - x, yc + y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	add ax,	word ptr ds:[curr_y]
+	mul cx
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	sub ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	
+
+	call colorPixel
+
+
+	
+	;xc + x, yc - y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	sub ax,	word ptr ds:[curr_y]
+	mul cx
+
+	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	add ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	
+	call colorPixel
+
+
+	
+	;xc - x, yc - y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	sub ax,	word ptr ds:[curr_y]
+	mul cx
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	sub ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	
+	call colorPixel
+
+
+	
+	;--------------------------------------------------------------------------	
+	; 				Sprawdzanie czy d1 < 0
+	;--------------------------------------------------------------------------
+
 	finit
-	fild	dword ptr ds:[d_y]
-	
+	fldz
+	fild dword ptr ds:[cond1]
+	fcom
+	fstsw	word ptr ds:[status]
 	
 
 	
 	
+	
+	mov		ax, word ptr ds:[status]
+	
+	and		ax, word ptr ds:[mask_eq]
+	cmp		ax, word ptr ds:[mask_eq]
+	
+
+	
+	je _cond1_ge_zero
+
+
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest mniejszy
+	mov		ax, word ptr ds:[status]
+	and		ax, word ptr ds:[mask_lt]
+	cmp		ax, word ptr ds:[mask_lt]
+	mov bx, ax
+	
+	jne _cond1_ge_zero			;CZY TO NA PEWNO JEST POPRAWNE?
+	
+	
+_cond1_lt_zero:
+	inc word ptr ds:[curr_x]
+	mov		word ptr ds:[tmp], 2
+	
+	;nowe dx:
+	;dx = dx + (2 * rx_2);
+	finit
+	fild	word ptr ds:[rx_2]
+	fild  word ptr ds:[tmp]
+	fmul
+	fild	dword ptr ds:[d_x]
+	fadd
+	fist	dword ptr ds:[d_x]
+	
+	
+
+	mov ax, word ptr ds:[d_x]
+	mov ax, word ptr ds:[d_x + 2]
+
+
+	
+	;nowe cond1: 
+	;cond1 = cond1 + dx + (rx_2);
+	
+	finit
+	fild	dword ptr ds:[cond1]
+	fild	dword ptr ds:[d_x]
+	fadd
+	fild	word ptr ds:[rx_2]
+	fadd
+	fist	dword ptr ds:[cond1]
+	
+
+
+	mov ax, word ptr ds:[cond1]
+	mov ax, word ptr ds:[cond1 + 2]
+
+
+	
+	
+	;mov ax, seg _A
+	;mov ds, ax
+	;mov dx, offset _A
+	;xor ax, ax
+	;mov ah, 9
+	;int 21h
+	
+	jmp _cond1_loop_cmp
+	
+
+_cond1_ge_zero:
+	inc word ptr ds:[curr_x]
+	dec word ptr ds:[curr_y]
+	
+	;nowe dx:
+	;dx = dx + (2 * rx_2);
+	finit
+	fild	word ptr ds:[rx_2]
+	fild  word ptr ds:[tmp]
+	fmul
+	fild	dword ptr ds:[d_x]
+	fadd
+	fist	dword ptr ds:[d_x]
+	
+
+	mov ax, word ptr ds:[d_x]
+	mov ax, word ptr ds:[d_x + 2]
+
+	
+	;nowe dy:	
+	;d_y = d_y - (2 * ry_2);
+	mov		word ptr ds:[tmp], 2
+	finit
+	fild	dword ptr ds:[d_y]
+	fild	word ptr ds:[tmp]
+	fild	word ptr ds:[ry_2]
+	fmul
+	fsub
+	fist	dword ptr ds:[d_y]
+	
+
+	mov ax, word ptr ds:[d_y]
+	mov ax, word ptr ds:[d_y + 2]
+
+	
+	
+	;cond1 = cond1 + d_x - d_y + (rx_2);
+	finit
+	fild	dword ptr ds:[cond1]
+	fild	dword ptr ds:[d_x]
+	fadd
+	fild	dword ptr ds:[d_y]
+	fsub
+	fild	word ptr ds:[rx_2]
+	fadd
+	fist	dword ptr ds:[cond1]
+	
+
+	mov ax, word ptr ds:[cond1]
+	mov ax, word ptr ds:[cond1 + 2]
+
+	
+	;mov ax, seg _B
+	;mov ds, ax
+	;mov dx, offset _B
+	;xor ax, ax
+	;mov ah, 9
+	;int 21h
+	
+	jmp _cond1_loop_cmp
+	
+
+
+	;--------------------------------------------------------------------------	
+	; 				Sprawdzanie warunku powtórzenia pętli: dx < dy
+	;--------------------------------------------------------------------------	
+_cond1_loop_cmp:	
+	;o porównywaniu za pomocą FPU: https://www.felixcloutier.com/x86/fcom:fcomp:fcompp
+	finit
+	fild	dword ptr ds:[d_y]
 	fild	dword ptr ds:[d_x]
 	
 	;"If no source operand is given, the value in ST(0) is compared with the value in ST(1)"
@@ -204,50 +445,99 @@ _octant1:
 	and		ax, word ptr ds:[mask_eq]
 	cmp		ax, word ptr ds:[mask_eq]
 	
-	je _equals
+	je _octant1_end
 
-	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek jest mniejszy
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest mniejszy
 	mov		ax, word ptr ds:[status]
 
 	
 	and		ax, word ptr ds:[mask_lt]
 	cmp		ax, word ptr ds:[mask_lt]
 
-	je _lesser
+	jne _octant1_end
 	
-_greater:	
-	mov ax, seg _data
-	mov ds, ax
-	mov ax, offset greater_than
-	mov dx, ax
-	mov ah, 9
-	int 21h
+	jmp _octant1
+
+
 	
+_octant1_end:	
 	
-	jmp _octant1_end
-_equals:
+	;==========================================================================
 	;
-	jmp _octant1_end
+	;									OKTANT 2
+	;
+	;==========================================================================
+	
+	;--------------------------------------------------------------------------
+	;obliczanie wartości decyzyjnej cond1 której użyjemy do wybierania pikseli	
+	;na podstawie wzoru 
+	;
+	;		cond1 = (rx_2 * ((2 * x + 1) * (2 * x + 1) / 4)) +
+    ;     			(ry_2 * ((y - 1) * (y - 1))) - (ry_2 * rx_2);
+	;--------------------------------------------------------------------------	
+	
+	finit
+	;------------------------------------
+	;rx_2 * (2 * x + 1) * (2 * x + 1) / 4
+	fild	word ptr ds:[rx_2]			;[#1] rx_2
+	
+	;;(2 * x + 1)
+	fld1								;[#2] rx_2 1
+	mov		word ptr ds:[tmp], 2		
+	fild	word ptr ds:[tmp]			;[#3] rx_2 1 2
+	fild 	word ptr ds:[curr_x]		;[#4] rx_2 1 2 x
+	fmul								;[#3] rx_2 1 (2 * x)
+	fadd								;[#2] rx_2 (1 + 2 * x)
+		
+	
+	;skopiujemy wartość z wierzchołka stosu, żeby móc ją użyć drugi raz
+	fist	dword ptr ds:[tmp_dd]		
+	fild	dword ptr ds:[tmp_dd]		;[#3] rx_2 (1 + 2 * x) (1 + 2 * x) 
+	fmul								;[#2] rx_2 ((1 + 2 * x)^2)
 
-_lesser:
-	mov ax, seg _data
-	mov ds, ax
-	mov ax, offset lesser_than
-	mov dx, ax
-	mov ah, 9
-	int 21h
 
-	jmp _octant1_end
 
-_octant1_end:
+	fmul								;[#1] (rx_2 * (1 + 2 * x)^2)
+	mov		word ptr ds:[tmp], 4
+	fild	word ptr ds:[tmp]			;[#2] (rx_2 * (1 + 2 * x)^2) 4
+	fdiv								;[#1] (rx_2 * (1 + 2 * x)^2  / 4)
+	
 
-_displayEnd:
-	mov ax, seg _data
-	mov ds, ax
-	mov ax, offset oct_1_end
-	mov dx, ax
-	mov ah, 9
-	int 21h
+	
+	;------------------------------------
+	;(ry_2 * (y - 1) * (y - 1)) - (ry_2 * rx_2)
+	;------------------------------------
+	
+	fild	word ptr ds:[ry_2]			;[#2] a = (rx_2 * (1 + 2 * x)^2 / 4), ry_2
+	fild	word ptr ds:[curr_y]		;[#3] a, ry_2, curr_y
+	fld1								;[#4] a, ry_2, curr_y, 1
+	fsub								;[#3] a, ry_2, (curr_y - 1)
+	;skopiujemy wartość z wierzchołka stosu, żeby móc ją użyć drugi raz
+	fist	word ptr ds:[tmp]
+	fild	word ptr ds:[tmp]			;[#4] a, ry_2, (curr_y - 1), (curr_y - 1)
+	fmul								;[#3] a, ry_2, (curr_y - 1)^2
+	fmul								;[#2] a, ry_2 * (curr_y - 1)^2
+
+	fild	word ptr ds:[ry_2]			;[#3] a, ry_2 * (curr_y - 1)^2, ry_2
+	fild	word ptr ds:[rx_2]			;[#4] a, ry_2 * (curr_y - 1)^2, ry_2, rx_2
+	fmul								;[#3] a, ry_2 * (curr_y - 1)^2, ry_2 * rx_2
+	fsub								;[#2] a, b = ry_2 * (curr_y - 1)^2 - ry_2 * rx_2
+	fadd								;[#1] a + b
+	fist	dword ptr ds:[cond2]
+	
+	
+	
+	;DOTĄD KOD JEST POPRAWNY ^^^^^^^^
+	
+	
+	;--------------------------------------------------------------------------	
+	; 				Pętla rysująca drugi oktant, tak długo aż y >= 0
+	;--------------------------------------------------------------------------	
+_octant2:
+	
+	
+	
+	
 	
 	
 	;oczekiwanie na dowolny przycisk?
@@ -255,7 +545,7 @@ _displayEnd:
 	int 16h
 	
 _end:
-	;powrót do trybu tekstowego
+	;;powrót do trybu tekstowego
 	mov	al, 3
 	mov	ah, 0
 	int	10h
@@ -265,7 +555,6 @@ _end:
 	int 21h
 
 
-nop
 ;==================================================================
 ;==================================================================
 ;							Procedury
@@ -292,14 +581,11 @@ convertToAddress:
 	ret
 
 
-;zapal_punkt:
-;	mov ax, word ptr ds:[y]
-;	mov	bx, linewidth
-;	mul	bx
-;	mov	bx, word ptr ds:[x]
-;	add	bx,	ax
-;	mov	al,	12
-;	mov	byte ptr es:[bx],	al
+;wymaga ustawienia wartości es na adres pamięci wideo, oraz bx na odpowiedni offset względem tego segmentu
+colorPixel:
+	mov	al,	12
+	mov	byte ptr es:[bx], al
+	ret
 
 	
 _code ends
