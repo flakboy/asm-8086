@@ -5,15 +5,13 @@ _data segment
 	
 	;współrzędne środka elipsy
 	xc	dw 160
-	;yc	dw 100
 	yc	dw 99
-	
-	
-	;program w oparciu o algorytm przedstawiony na stronie:
-	;https://www.geeksforgeeks.org/midpoint-ellipse-drawing-algorithm/
 
 	;maksymalna wartość promienia to 100
 	;promienie elipsy
+	;!!! UWAGA !!!
+	;zmienne są nazwane na odwrót - zmienna rx określa promień wzdłuż osi pionowej
+	;zaś ry określa promień wzdłuż osi poziomej
 	rx	dw	100
 	ry	dw	100
 	
@@ -39,14 +37,9 @@ _data segment
 	
 
 	status			dw 0
-	;2 bit statusu ma wartość 1 jeśli porównywane
-	;wartości są równe
+	;2 bit statusu ma wartość 1 jeśli porównywane wartości są równe
 	mask_eq 	dw 0100000000000000b
 	mask_lt 	dw 0000000100000000b
-	
-	lesser_than	db "mniejsze$"
-	greater_than db "wieksze$"
-	equals db "rowne$"
 	
 	tmp dw ?
 	tmp_dd dd 0
@@ -60,20 +53,17 @@ _data ends
 
 _code segment
 _start:
-
 	;==================================================
 	;
 	;				INICJALIZACJA PROGRAMU
 	;
 	;==================================================
-
 	;inicjalizacja stosu - adres stosu otrzymujemy z połączenia (SS:SP)
 	mov ax, seg _stackTop
 	mov ss, ax
 	mov sp, offset _stackTop
 	
 	call initDS
-
 
 	;;wejście w tryb VGA 320x200
 	mov al, 13h
@@ -106,7 +96,7 @@ _start:
 	
 	;==========================================================================
 	;
-	;									OKTANT 1
+	;								OKTANT 1
 	;
 	;==========================================================================
 	
@@ -133,24 +123,15 @@ _start:
 	
 	fist dword ptr ds:[cond1]
 
-
-	;ten kod służy wyłącznie do debugowania
-	;mov ax, word ptr ds:[cond1]
-	;mov ax, word ptr ds:[cond1 + 2]
-	
-	;wynik jest niby poprawny, ale może być ujemny i z tego mogą wynikać potem problemy!
-	
 	
 	;--------------------------------------------------------------------------
 	;obliczanie startowych wartości d_x oraz d_y określających przyrost x oraz y	
     ;    dx = 2 * rx_2 * x;
     ;    dy = 2 * ry_2 * y;
-	;--------------------------------------------------------------------------	
-	
+	;--------------------------------------------------------------------------		
 	;d_x
 	;na start x i tak jest równe 0, więc nie ma sensu liczyć
 	mov word ptr ds:[d_x], 0
-	
 	
 	;d_y:
 	finit
@@ -162,21 +143,11 @@ _start:
 	fmul
 	fist	dword ptr ds:[d_y]
 
-
-	;debugowanie
-	;mov ax, word ptr ds:[d_y]
-	;mov ax, word ptr ds:[d_y + 2]
-
-	
-	
-	
 	
 	;--------------------------------------------------------------------------	
 	; 				Pętla rysująca pierwszy oktant, tak długo aż dx < dy
 	;--------------------------------------------------------------------------	
 _octant1:
-
-
 	;ekwiwalent operacji sleep na określoną ilość mikrosekund
 	mov cx, 0000h
 	mov dx, 0186ah
@@ -184,104 +155,11 @@ _octant1:
 	mov ah, 86h
 	int 15h				;przerwanie BIOS-u, wymusza czekanie określonej ilości mikrosekund, podanej w CX:DX
 
-	;finit	
-	;fild	word ptr ds:[yc]
-	;fild	word ptr ds:[curr_y]
-	;fadd
-	
-	;mov		word ptr ds:[tmp], 320
-	;fild	word ptr ds:[tmp]
-	;fmul
-	
-	;fist	word ptr ds:[tmp]
-		
-	;mov		ax, word ptr ds:[tmp]
-	;mov		bx, video_offset
-	
-	;add		bx, word ptr ds:[xc]
-	;add		bx,	word ptr ds:[curr_x]
-	
-	
-	;xc + x, yc + y
-	mov cx, 320
-	mov ax, word ptr ds:[yc]
-	add ax,	word ptr ds:[curr_y]
-	mul cx
-
-	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
-
-	mov	bx, 0h
-	add bx, ax
-	
-	mov ax, word ptr ds:[xc]
-	add ax, word ptr ds:[curr_x]
-
-	add bx, ax
-	
-
-	call colorPixel
+	call colorOctants
 
 
-
-	;xc - x, yc + y
-	mov cx, 320
-	mov ax, word ptr ds:[yc]
-	add ax,	word ptr ds:[curr_y]
-	mul cx
-
-	mov	bx, 0h
-	add bx, ax
-	
-	mov ax, word ptr ds:[xc]
-	sub ax, word ptr ds:[curr_x]
-
-	add bx, ax
-	
-
-	call colorPixel
-
-
-	
-	;xc + x, yc - y
-	mov cx, 320
-	mov ax, word ptr ds:[yc]
-	sub ax,	word ptr ds:[curr_y]
-	mul cx
-
-	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
-
-	mov	bx, 0h
-	add bx, ax
-	
-	mov ax, word ptr ds:[xc]
-	add ax, word ptr ds:[curr_x]
-
-	add bx, ax
-	
-	call colorPixel
-
-
-	
-	;xc - x, yc - y
-	mov cx, 320
-	mov ax, word ptr ds:[yc]
-	sub ax,	word ptr ds:[curr_y]
-	mul cx
-
-	mov	bx, 0h
-	add bx, ax
-	
-	mov ax, word ptr ds:[xc]
-	sub ax, word ptr ds:[curr_x]
-
-	add bx, ax
-	
-	call colorPixel
-
-
-	
 	;--------------------------------------------------------------------------	
-	; 				Sprawdzanie czy d1 < 0
+	; 							Sprawdzanie czy d1 < 0
 	;--------------------------------------------------------------------------
 
 	finit
@@ -290,27 +168,21 @@ _octant1:
 	fcom
 	fstsw	word ptr ds:[status]
 	
-
-	
-	
-	
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest równy 0
 	mov		ax, word ptr ds:[status]
-	
 	and		ax, word ptr ds:[mask_eq]
 	cmp		ax, word ptr ds:[mask_eq]
-	
-
 	
 	je _cond1_ge_zero
 
 
-	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest mniejszy
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest mniejszy od 0
 	mov		ax, word ptr ds:[status]
 	and		ax, word ptr ds:[mask_lt]
 	cmp		ax, word ptr ds:[mask_lt]
 	mov bx, ax
 	
-	jne _cond1_ge_zero			;CZY TO NA PEWNO JEST POPRAWNE?
+	jne _cond1_ge_zero			
 	
 	
 _cond1_lt_zero:
@@ -327,13 +199,6 @@ _cond1_lt_zero:
 	fadd
 	fist	dword ptr ds:[d_x]
 	
-	
-
-	mov ax, word ptr ds:[d_x]
-	mov ax, word ptr ds:[d_x + 2]
-
-
-	
 	;nowe cond1: 
 	;cond1 = cond1 + dx + (rx_2);
 	
@@ -344,21 +209,6 @@ _cond1_lt_zero:
 	fild	word ptr ds:[rx_2]
 	fadd
 	fist	dword ptr ds:[cond1]
-	
-
-
-	mov ax, word ptr ds:[cond1]
-	mov ax, word ptr ds:[cond1 + 2]
-
-
-	
-	
-	;mov ax, seg _A
-	;mov ds, ax
-	;mov dx, offset _A
-	;xor ax, ax
-	;mov ah, 9
-	;int 21h
 	
 	jmp _cond1_loop_cmp
 	
@@ -377,13 +227,9 @@ _cond1_ge_zero:
 	fadd
 	fist	dword ptr ds:[d_x]
 	
-
-	mov ax, word ptr ds:[d_x]
-	mov ax, word ptr ds:[d_x + 2]
-
 	
-	;nowe dy:	
-	;d_y = d_y - (2 * ry_2);
+	;;nowe dy:	
+	;;d_y = d_y - (2 * ry_2);
 	mov		word ptr ds:[tmp], 2
 	finit
 	fild	dword ptr ds:[d_y]
@@ -394,12 +240,7 @@ _cond1_ge_zero:
 	fist	dword ptr ds:[d_y]
 	
 
-	mov ax, word ptr ds:[d_y]
-	mov ax, word ptr ds:[d_y + 2]
-
-	
-	
-	;cond1 = cond1 + d_x - d_y + (rx_2);
+	;;cond1 = cond1 + d_x - d_y + (rx_2);
 	finit
 	fild	dword ptr ds:[cond1]
 	fild	dword ptr ds:[d_x]
@@ -409,18 +250,6 @@ _cond1_ge_zero:
 	fild	word ptr ds:[rx_2]
 	fadd
 	fist	dword ptr ds:[cond1]
-	
-
-	mov ax, word ptr ds:[cond1]
-	mov ax, word ptr ds:[cond1 + 2]
-
-	
-	;mov ax, seg _B
-	;mov ds, ax
-	;mov dx, offset _B
-	;xor ax, ax
-	;mov ah, 9
-	;int 21h
 	
 	jmp _cond1_loop_cmp
 	
@@ -534,11 +363,115 @@ _octant1_end:
 	; 				Pętla rysująca drugi oktant, tak długo aż y >= 0
 	;--------------------------------------------------------------------------	
 _octant2:
+	call colorOctants
+
+	;--------------------------------------------------------------------------	
+	; 							Sprawdzanie czy d2 > 0
+	;--------------------------------------------------------------------------
+	finit
+	fldz
+	fild	dword ptr ds:[cond2]
+	fcom
+	fstsw	word ptr ds:[status]
 	
 	
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest równy 0
+	mov		ax, word ptr ds:[status]
+	and		ax, word ptr ds:[mask_eq]
+	cmp		ax, word ptr ds:[mask_eq]
+	
+	je _cond1_le_zero
+
+
+	;sprawdzanie czy status zawiera bit oznaczający że wierzchołek stosu jest mniejszy od 0
+	mov		ax, word ptr ds:[status]
+	and		ax, word ptr ds:[mask_lt]
+	cmp		ax, word ptr ds:[mask_lt]
+	
+	je _cond1_le_zero		
+	
+_cond2_gt_zero:
+	;mov ax, seg _A
+	;mov ds, ax
+	;mov dx, offset _A
+	;xor ax, ax
+	;mov ah, 9
+	;int 21h
+	
+	dec	word ptr ds:[curr_y]
+	
+	finit
+	fild	dword ptr ds:[d_y]
+	mov		word ptr ds:[tmp], 2
+	fild	word ptr ds:[tmp]
+	fild	word ptr ds:[ry_2]
+	fmul	
+	fsub
+	fist	dword ptr ds:[d_y]
+	
+	finit
+	fild	dword ptr ds:[cond2]
+	fild	word ptr ds:[ry_2]
+	fadd
+	fild	dword ptr ds:[d_y]
+	fsub
+	fist	dword ptr ds:[cond2]
 	
 	
+	jmp _cond2_loop_cmp
+_cond1_le_zero:
+	;mov ax, seg _B
+	;mov ds, ax
+	;mov dx, offset _B
+	;xor ax, ax
+	;mov ah, 9
+	;int 21h
 	
+
+	dec	word ptr ds:[curr_y]
+	inc word ptr ds:[curr_x]
+	
+	finit
+	fild	dword ptr ds:[d_x]
+	mov		word ptr ds:[tmp], 2
+	fild	word ptr ds:[tmp]
+	fild	word ptr ds:[rx_2]
+	fmul
+	fadd
+	fist	dword ptr ds:[d_x]
+	
+	finit
+	fild	dword ptr ds:[d_y]
+	fild 	word ptr ds:[tmp]
+	fild	word ptr ds:[ry_2]
+	fmul
+	fsub
+	fist	dword ptr ds:[d_y]
+	
+	finit
+	fild 	dword ptr ds:[cond2]
+	fild	dword ptr ds:[d_x]
+	fadd
+	fild	dword ptr ds:[d_y]
+	fsub
+	fild	word ptr ds:[ry_2]
+	fadd
+	fist 	dword ptr ds:[cond2]
+	
+	
+	jmp _cond2_loop_cmp
+	
+	;--------------------------------------------------------------------------	
+	; 				Sprawdzanie warunku powtórzenia pętli: y >= 0
+	;--------------------------------------------------------------------------	
+_cond2_loop_cmp:
+	mov ax, word ptr ds:[curr_y]
+	cmp ax, 0
+	jl _octant2_end
+	
+	jmp _octant2
+
+_octant2_end:
 	
 	;oczekiwanie na dowolny przycisk?
 	mov ax, 0
@@ -581,8 +514,84 @@ convertToAddress:
 	ret
 
 
+
+
+colorOctants:
+	;xc + x, yc + y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	add ax,	word ptr ds:[curr_y]
+	mul cx
+
+	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	add ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	call setPixelColor
+
+
+
+	;xc - x, yc + y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	add ax,	word ptr ds:[curr_y]
+	mul cx
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	sub ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	call setPixelColor
+
+
+	
+	;xc + x, yc - y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	sub ax,	word ptr ds:[curr_y]
+	mul cx
+
+	;;nie musimy brać pod uwagę DX, ponieważ 320 * 200 < 2^16 więc wynik zawsze zmieści się w AX
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	add ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	call setPixelColor
+
+
+	
+	;xc - x, yc - y
+	mov cx, 320
+	mov ax, word ptr ds:[yc]
+	sub ax,	word ptr ds:[curr_y]
+	mul cx
+
+	mov	bx, 0h
+	add bx, ax
+	
+	mov ax, word ptr ds:[xc]
+	sub ax, word ptr ds:[curr_x]
+
+	add bx, ax
+	call setPixelColor
+
+	ret
+
+
 ;wymaga ustawienia wartości es na adres pamięci wideo, oraz bx na odpowiedni offset względem tego segmentu
-colorPixel:
+setPixelColor:
 	mov	al,	12
 	mov	byte ptr es:[bx], al
 	ret
