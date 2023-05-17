@@ -41,6 +41,17 @@ _data segment
 	tmp_dd dd 0
 		
 	pixel_offset dw 0
+	
+	error_msg db "Podane argumenty sa nieprawidlowe!", "$"
+	error_msg_value db "Za duza wartosc!", "$"
+	error_msg_character db "Nieprawidlowy symbol!", "$"
+	
+	
+	token_num	db 0
+	
+	num_1 dw 0
+	num_2 dw 0
+	
 _data ends
 
 _code segment
@@ -55,22 +66,53 @@ _start:
 	mov ss, ax
 	mov sp, offset _stackTop
 	
+	mov	ax, seg input_text
+	mov	es, ax
+	
+	xor ax, ax
+	mov al, byte ptr ds:[080h]
+	mov byte ptr cs:[input_len], al
+	
+	xor cx, cx
+	mov	cl, byte ptr ds:[080h]
+	
+	
+	
+	mov si, 082h
+	mov di, offset input_text
+	; "Instrukcja łańcuchowa", powtarza kopiowanie
+	; ds:[si] -> es:[di]
+	; cx razy
+	rep movsb
+	
+
 	call initDS
 
+	mov si, offset input_text
+	
+	mov di, offset num_1
+	call parseToken
+	mov ax, word ptr ds:[num_1]
+
+	mov di, offset num_2
+	call parseToken
+	mov ax, word ptr ds:[num_2]
+
+	mov ax, word ptr ds:[num_1]
+	shr ax, 1
+	mov word ptr ds:[ry], ax
+	
+	xor ax, ax
+	mov ax, word ptr ds:[num_2]
+	shr ax, 1
+	mov word ptr ds:[rx], ax
+	
+	
 	;;wejście w tryb VGA 320x200
 	mov al, 13h
 	mov ah, 0
 	int 10h
 
-	;ustawimy pamięć wideo jako ES
-	mov ax, video_offset
-	mov es, ax
-	
-	;obliczenie wartości rx_2 oraz ry_2, które przydadzą się później;
-	;dopuszczamy wartości rx i ry <= 100,
-	;a 10000 mieści się w 2 bajtach, więc nie potrzebujemy kopiować dx
-		
-	
 	call drawEllipse
 
 	
@@ -128,7 +170,6 @@ _decY:
 
 
 _renderEllipse:
-
 	call clearScreen
 
 	call drawEllipse
@@ -143,9 +184,38 @@ _end:
 	mov	ah, 0
 	int	10h
 
-	mov al, 0
-	mov ah, 4ch
+	call terminate
+
+;----------------------------------------------------------------------
+
+
+_invalidInput:
+	mov	ax, seg error_msg
+	mov ds, ax
+	mov dx, offset error_msg
+	mov ah, 9
 	int 21h
+	
+	call terminate
+
+_tooBigValue:
+	mov	ax, seg error_msg_value
+	mov ds, ax
+	mov dx, offset error_msg_value
+	mov ah, 9
+	int 21h
+	
+	call terminate
+
+_invalidCharacter:
+	mov	ax, seg error_msg_character
+	mov ds, ax
+	mov dx, offset error_msg_character
+	mov ah, 9
+	int 21h
+	
+	call terminate
+
 
 
 ;==================================================================
@@ -153,12 +223,17 @@ _end:
 ;							Procedury
 ;==================================================================
 ;==================================================================
-initDS:
-	mov ax, seg _data
-	mov ds, ax
-	ret
+terminate:
+	mov al, 0
+	mov ah, 4ch
+	int 21h
+
 
 clearScreen:
+	;ustawimy pamięć wideo jako ES
+	mov ax, video_offset
+	mov es, ax
+
 	mov ax, 200
 	mov cx, 320
 	mul cx
@@ -175,7 +250,75 @@ _clearLoop:
 	ret
 
 
+
+;wymaga ustawienia si do danych znajdujących się w cs, oraz di do ds
+parseToken:
+	_parseLoop: 
+	xor cx, cx
+	mov cl, byte ptr cs:[si]	
+	
+	_checkCR:
+		cmp cl, 13				;znak Carriage Return, dopisywany automatycznie do stringu z argumentami programu
+		jne _checkDollarSign
+		cmp byte ptr cs:[token_started], 1
+		je _tokenEnd
+		jne _invalidInput
+
+	_checkDollarSign:
+		cmp cl, 36				;znak dolara
+		jne _checkSpace 
+		cmp byte ptr cs:[token_started], 1
+		je _tokenEnd
+		jne _invalidInput
+
+	_checkSpace:
+		cmp cl, 32				;znak spacji
+		jne _checkTab 
+		cmp byte ptr cs:[token_started], 1
+		je _tokenEnd
+		jne _tokenContinue1
+		
+	_checkTab:
+		cmp cl, 9				;znak tab
+		jne _checkDigit 
+		cmp byte ptr cs:[token_started], 1
+		je _tokenEnd
+		jne _tokenContinue1
+
+	_checkDigit:
+		cmp cl, 48
+		jl _invalidCharacter
+		
+		cmp cl, 57
+		jg _invalidCharacter
+				
+		mov byte ptr cs:[token_started], 1
+		
+		mov ax, word ptr ds:[di]
+		mov dx, 10
+		mul dx
+		add ax, cx
+		sub ax, 48
+		mov word ptr ds:[di], ax
+		
+		cmp word ptr ds:[di], 200
+		jg _tooBigValue
+	_tokenContinue1:
+		inc si	
+		jmp _parseLoop
+
+_tokenEnd:
+
+	mov byte ptr cs:[token_started], 0
+	ret
+
+
+
+
+
 colorOctants:
+	mov ax, video_offset
+	mov es, ax
 	;ekwiwalent operacji sleep na określoną ilość mikrosekund
 	;mov cx, 0000h
 	;mov dx, 0fa0h
@@ -260,13 +403,19 @@ colorOctants:
 ; ########################################################################################
 
 drawEllipse:
+
 	;curr_x jest na początku ustawione na 0, w segmencie danych
 	;natomiast curr_y musimy ustawić dopiero po przeparsowaniu rx
 	mov word ptr ds:[curr_x], 0
 	
 	mov ax, word ptr ds:[rx]
 	mov word ptr ds:[curr_y], ax
-
+	
+	
+	;obliczenie wartości rx_2 oraz ry_2, które przydadzą się później;
+	;dopuszczamy wartości rx i ry <= 100,
+	;a 10000 mieści się w 2 bajtach, więc nie potrzebujemy kopiować dx
+	
 	;rx_2:	
 	mov	ax, word ptr ds:[rx]
 	mul	word ptr ds:[rx]
@@ -639,13 +788,21 @@ setPixelColor:
 	mov	byte ptr es:[bx], al
 	ret
 
+initDS:
+	mov ax, seg _data
+	mov ds, ax
+	ret
 	
 ;==================================================================================================
 ;											ZMIENNE
 ;==================================================================================================
+	input_len	db	?
 	
-screen_y dw 0
-screen_x dw 0
+	arg_1	db 32
+	arg_2	db 32
+	input_text	db	192 dup("$")
+	
+	token_started db 0
 
 _code ends
 _stack segment stack
